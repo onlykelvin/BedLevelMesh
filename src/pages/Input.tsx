@@ -37,16 +37,17 @@ const Input: React.FC = () => {
     <div className="max-w-3xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-900 mb-4">Input Mesh Data</h2>
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h3 className="text-sm font-medium text-blue-800 mb-2">Example Format:</h3>
+        <h3 className="text-sm font-medium text-blue-800 mb-2">Input Format</h3>
+        <p className="text-xs text-blue-700 mb-2">
+          Each value must start with + or - sign, separated by spaces. All rows must have the same number of values.
+        </p>
         <pre className="text-xs text-blue-700 bg-blue-100 p-2 rounded">
-          {`Example 1:
-+1.291 +0.767 +0.205 -0.436 -1.064
+{`+1.291 +0.767 +0.205 -0.436 -1.064
 +1.300 +0.731 +0.139 -0.506 -1.143
 +1.204 +0.620 -0.003 -0.628 -1.270
 +1.076 +0.501 -0.079 -0.703 -1.312
 +0.975 +0.406 -0.156 -0.782 -1.406
 
-Example 2:
 +1.204 +0.620 -0.003
 +1.076 +0.501 -0.079 
 +0.975 +0.406 -0.156`}
