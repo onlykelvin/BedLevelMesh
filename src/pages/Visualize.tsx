@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMeshContext } from '../context/MeshContext';
 import { Maximize2, Minimize2, Box, Eye, Sidebar as SidebarRight, HelpCircle, MousePointer } from 'lucide-react';
 import { Canvas, ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 
@@ -57,7 +57,8 @@ const MeshGeometry: React.FC<{
   hoveredPoint: Point | null;
   onPointHover: (point: Point | null) => void;
   interactive: boolean;
-}> = ({ data, selectedPoint, onPointSelect, hoveredPoint, onPointHover, interactive }) => {
+  showLabels: boolean;
+}> = ({ data, selectedPoint, onPointSelect, hoveredPoint, onPointHover, interactive, showLabels }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const [minValue, maxValue] = useMemo(() => {
     const values = data.flat();
@@ -67,71 +68,66 @@ const MeshGeometry: React.FC<{
   const generateGeometry = () => {
     if (!data || data.length === 0 || data[0].length === 0) return null;
     
-    const rows = data.length;
-    const cols = data[0].length;
-    const aspectRatio = cols / rows;
-    
-    // Scale the mesh to fit within a unit square while maintaining proportions
-    const size = 1;
-    let width, height;
-    
-    if (aspectRatio > 1) {
-      width = size;
-      height = size / aspectRatio;
-    } else {
-      width = size * aspectRatio;
-      height = size;
-    }
-    
-    // Create a geometry with vertices for each data point
-    const geometry = new THREE.PlaneGeometry(
-      width,
-      height,
-      cols - 1,
-      rows - 1
-    );
-    
-    // Center the geometry
-    geometry.center();
-    return geometry;
-  };
-
-  const updateGeometry = (geometry: THREE.PlaneGeometry) => {
-    const range = maxValue - minValue;
-    const rows = data.length;
-    const cols = data[0].length;
-    // Update vertices based on mesh data
-    const positions = geometry.attributes.position.array as Float32Array;
-    const colors = new Float32Array(positions.length);
+    // Create a custom geometry using point positions
+    const geometry = new THREE.BufferGeometry();
+    const vertices: number[] = [];
+    const indices: number[] = [];
+    const colors: number[] = [];
     const colorArray = new THREE.Color();
-    
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        const index = (i * cols + j) * 3;
-        const value = data[i][j];
+    const range = maxValue - minValue;
+
+    // Generate vertices using the same calculation as points
+    data.forEach((row, i) => {
+      row.forEach((value, j) => {
+        const cols = data[0].length;
+        const rows = data.length;
+        const aspectRatio = cols / rows;
+        
+        let x, y;
+        if (aspectRatio > 1) {
+          x = (j / (cols - 1) - 0.5);
+          y = ((rows - 1 - i) / (rows - 1) - 0.5) / aspectRatio;
+        } else {
+          x = (j / (cols - 1) - 0.5) * aspectRatio;
+          y = ((rows - 1 - i) / (rows - 1) - 0.5);
+        }
+        
+        const z = value * 0.1;
+        vertices.push(x, y, z);
+
+        // Generate color for vertex
         const normalizedValue = (value - minValue) / range;
-        
-        // Update Z position
-        positions[index + 2] = value * 0.1; // Scale factor for height
-        
-        // Generate smooth color gradient
-        const hue = (1 - normalizedValue) * 0.6; // Blue to red
-        colorArray.setHSL(hue, 1, 0.5);
-        colors[index] = colorArray.r;
-        colors[index + 1] = colorArray.g;
-        colors[index + 2] = colorArray.b;
+        colorArray.setHSL((1 - normalizedValue) * 0.6, 1, 0.5);
+        colors.push(colorArray.r, colorArray.g, colorArray.b);
+      });
+    });
+
+    // Generate triangle indices
+    for (let i = 0; i < data.length - 1; i++) {
+      for (let j = 0; j < data[0].length - 1; j++) {
+        const topLeft = i * data[0].length + j;
+        const topRight = topLeft + 1;
+        const bottomLeft = (i + 1) * data[0].length + j;
+        const bottomRight = bottomLeft + 1;
+
+        // First triangle
+        indices.push(topLeft, bottomLeft, topRight);
+        // Second triangle
+        indices.push(topRight, bottomLeft, bottomRight);
       }
     }
     
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
     return geometry;
   };
-  
+
   useEffect(() => {
     if (meshRef.current) {
       const geometry = generateGeometry();
       if (geometry) {
-        updateGeometry(geometry);
         meshRef.current.geometry = geometry;
       }
     }
@@ -139,6 +135,29 @@ const MeshGeometry: React.FC<{
   
   return (
     <group rotation={[-Math.PI / 2, 0, 0]}>
+      {showLabels && (
+        <>
+          <Text
+            position={[0, -0.7, 0]}
+            fontSize={0.05}
+            color="black"
+            anchorX="center"
+            anchorY="middle"
+          >
+            Front
+          </Text>
+          <Text
+            position={[0.7, 0, 0]}
+            rotation={[0, 0, -Math.PI / 2]}
+            fontSize={0.05}
+            color="black"
+            anchorX="center"
+            anchorY="middle"
+          >
+            Right
+          </Text>
+        </>
+      )}
       <mesh ref={meshRef}>
         <meshStandardMaterial
           vertexColors
@@ -160,10 +179,12 @@ const MeshGeometry: React.FC<{
           let x, y;
           if (aspectRatio > 1) {
             x = (j / (cols - 1) - 0.5);
-            y = (i / (rows - 1) - 0.5) / aspectRatio;
+            // Flip Y coordinate to match mesh orientation
+            y = ((rows - 1 - i) / (rows - 1) - 0.5) / aspectRatio;
           } else {
             x = (j / (cols - 1) - 0.5) * aspectRatio;
-            y = (i / (rows - 1) - 0.5);
+            // Flip Y coordinate to match mesh orientation
+            y = ((rows - 1 - i) / (rows - 1) - 0.5);
           }
           
           const z = value * 0.1; // Scale height
@@ -199,6 +220,7 @@ const Visualize: React.FC = () => {
   const [selectedPoint, setSelectedPoint] = useState<Point | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
   const [interactive, setInteractive] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
 
   const setViewpoint = (position: [number, number, number]) => {
     if (controlsRef.current) {
@@ -338,7 +360,18 @@ const Visualize: React.FC = () => {
                   }`}
                   title={interactive ? "Disable interaction" : "Enable interaction"}
                 >
-                  <MousePointer className="h-5 w-5" />
+                  <MousePointer className="h-5 w-5" />                  
+                </button>
+                <button
+                  onClick={() => setShowLabels(!showLabels)}
+                  className={`p-2 rounded-md transition-colors ${
+                    showLabels 
+                      ? 'bg-white text-indigo-600 shadow-sm' 
+                      : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                  }`}
+                  title={showLabels ? "Hide labels" : "Show labels"}
+                >
+                  <span className="font-mono text-sm">XYZ</span>
                 </button>
               </div>
             </div>
@@ -405,6 +438,7 @@ const Visualize: React.FC = () => {
                   hoveredPoint={hoveredPoint}
                   onPointHover={setHoveredPoint}
                   interactive={interactive}
+                  showLabels={showLabels}
                 />
               )}
               <gridHelper args={[2, 20]} />
